@@ -13,9 +13,9 @@
 			"stopOnEntry": false,
 			"sourceMaps": true,
 			"outFiles": [
-				"${workspaceRoot}/out/src/**/*.js"
+				"${workspaceRoot}/dist/**/*.js"
 			],
-			"preLaunchTask": "npm: compile",
+			"preLaunchTask": "npm: pretest",
 			"env": {
 				"DEBUGTELEMETRY": "1"
 			}
@@ -32,9 +32,9 @@
 			"stopOnEntry": false,
 			"sourceMaps": true,
 			"outFiles": [
-				"${workspaceRoot}/out/test"
+				"${workspaceRoot}/dist/test"
 			],
-			"preLaunchTask": "npm: compile",
+			"preLaunchTask": "npm: pretest", // asdf?
 			"env": {
 				"MOCHA_grep": "", // RegExp of tests to run (empty for all)
 				"MOCHA_enableTimeouts": "0", // Disable time-outs
@@ -50,7 +50,7 @@
 			"port": 6005,
 			"sourceMaps": true,
 			"outFiles": [
-				"${workspaceRoot}/out/**/*.js"
+				"${workspaceRoot}/dist/**/*.js"
 			]
 		},
 		{
@@ -62,7 +62,7 @@
 			"sourceMaps": true,
 			"restart": true,
 			"outFiles": [
-				"${workspaceRoot}/out/src"
+				"${workspaceRoot}/dist"
 			]
 		},
 		{

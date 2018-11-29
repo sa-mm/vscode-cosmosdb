@@ -1,177 +1,35 @@
-/*--------------------------------------------------------------------------------------------
+/*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License. See LICENSE.md in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
+/**
+ * This is the entrypoint for extension.js, the main webpack bundle for the extension.
+ * Anything needing to be exposed outside of the extension sources must be exported from here, because
+ * everything else will be in private modules in extension.js.
+ *
+ *   dist/extension.js:
+ *      The main extension module (contains the bulk of the extension code as packaged by webpack)
+ *      Single module containing most of the code sources. Exports activateInternal and any functions needed by the tests
+ *      Compiled from src/extension.ts, src/cosmosExtension.ts, and most other production sources
+ *      Module entrypoint is src/extension.ts (this file), so only items exported from this file are exported from dist/extension.js
+ *
+ *   entrypoint.js:
+ *      Actual extension entrypoint seen by vscode.
+ *      Exports activate.
+ *      Its only reason for existence (instead of using dist/extension.js) is to measure the load time for extension.js.
+ *
+ *   dist/test/
+ *      Contains test files compiled from test/*.ts files.
+ *      Should not import source .ts files directly because:
+ *        1) That can cause multiple definitions of singletons in extension code (like extensionVariables)
+ *        2) We want to test the webpacked code
+ *      Instead they should import src/extension.ts, which will be exposed at runtime through dist/extension.js.
+ */
 
-const loadStartTime: number = Date.now();
-let loadEndTime: number;
+// Export activate for vscode to call (via entrypoint.js)
+export { activateInternal } from './cosmosExtension';
 
-import * as copypaste from 'copy-paste';
-import * as vscode from 'vscode';
-import { AzureTreeDataProvider, AzureTreeItem, AzureUserInput, callWithTelemetryAndErrorHandling, createApiProvider, createTelemetryReporter, IActionContext, registerCommand, registerEvent, registerUIExtensionVariables, SubscriptionTreeItem } from 'vscode-azureextensionui';
-import { AzureExtensionApi, AzureExtensionApiProvider } from 'vscode-azureextensionui/api';
-import { findTreeItem } from './commands/api/findTreeItem';
-import { pickTreeItem } from './commands/api/pickTreeItem';
-import { importDocuments } from './commands/importDocuments';
-import { doubleClickDebounceDelay } from './constants';
-import { CosmosEditorManager } from './CosmosEditorManager';
-import { DocDBDocumentNodeEditor } from './docdb/editors/DocDBDocumentNodeEditor';
-import { registerDocDBCommands } from './docdb/registerDocDBCommands';
-import { DocDBAccountTreeItem } from './docdb/tree/DocDBAccountTreeItem';
-import { DocDBAccountTreeItemBase } from './docdb/tree/DocDBAccountTreeItemBase';
-import { DocDBCollectionTreeItem } from './docdb/tree/DocDBCollectionTreeItem';
-import { DocDBDocumentTreeItem } from './docdb/tree/DocDBDocumentTreeItem';
-import { ext } from './extensionVariables';
-import { registerGraphCommands } from './graph/registerGraphCommands';
-import { GraphAccountTreeItem } from './graph/tree/GraphAccountTreeItem';
-import { MongoDocumentNodeEditor } from './mongo/editors/MongoDocumentNodeEditor';
-import { registerMongoCommands } from './mongo/registerMongoCommands';
-import { MongoAccountTreeItem } from './mongo/tree/MongoAccountTreeItem';
-import { MongoCollectionTreeItem } from './mongo/tree/MongoCollectionTreeItem';
-import { MongoDocumentTreeItem } from './mongo/tree/MongoDocumentTreeItem';
-import { TableAccountTreeItem } from './table/tree/TableAccountTreeItem';
-import { AttachedAccountsTreeItem, AttachedAccountSuffix } from './tree/AttachedAccountsTreeItem';
-import { CosmosDBAccountProvider } from './tree/CosmosDBAccountProvider';
-import * as cpUtil from './utils/cp';
-
-export async function activate(context: vscode.ExtensionContext): Promise<AzureExtensionApiProvider> {
-    ext.context = context;
-    ext.reporter = createTelemetryReporter(context);
-    ext.ui = new AzureUserInput(context.globalState);
-    ext.outputChannel = vscode.window.createOutputChannel("Azure Cosmos DB");
-    context.subscriptions.push(ext.outputChannel);
-    registerUIExtensionVariables(ext);
-
-    await callWithTelemetryAndErrorHandling('cosmosDB.activate', async function (this: IActionContext): Promise<void> {
-        this.properties.isActivationEvent = 'true';
-        this.measurements.mainFileLoad = (loadEndTime - loadStartTime) / 1000;
-
-        const attachedAccountsNode: AttachedAccountsTreeItem = new AttachedAccountsTreeItem(context.globalState);
-        ext.attachedAccountsNode = attachedAccountsNode;
-        const tree: AzureTreeDataProvider = new AzureTreeDataProvider(CosmosDBAccountProvider, 'cosmosDB.loadMore', [attachedAccountsNode]);
-        context.subscriptions.push(tree);
-        ext.tree = tree;
-        context.subscriptions.push(vscode.window.registerTreeDataProvider('cosmosDBExplorer', tree));
-
-        ext.treeView = vscode.window.createTreeView('cosmosDBExplorer', { treeDataProvider: tree });
-
-        const editorManager: CosmosEditorManager = new CosmosEditorManager(context.globalState);
-
-        registerDocDBCommands(editorManager);
-        registerGraphCommands(context);
-        registerMongoCommands(context, editorManager);
-
-        // Common commands
-        const accountContextValues: string[] = [GraphAccountTreeItem.contextValue, DocDBAccountTreeItem.contextValue, TableAccountTreeItem.contextValue, MongoAccountTreeItem.contextValue];
-
-        registerCommand('cosmosDB.selectSubscriptions', () => vscode.commands.executeCommand("azure-account.selectSubscriptions"));
-
-        registerCommand('cosmosDB.createAccount', async function (this: IActionContext, node?: SubscriptionTreeItem): Promise<void> {
-            if (!node) {
-                node = <SubscriptionTreeItem>await tree.showTreeItemPicker(SubscriptionTreeItem.contextValue);
-            }
-
-            await node.createChild(this);
-        });
-        registerCommand('cosmosDB.deleteAccount', async (node?: AzureTreeItem) => {
-            if (!node) {
-                node = await tree.showTreeItemPicker(accountContextValues);
-            }
-
-            await node.deleteTreeItem();
-        });
-
-        registerCommand('cosmosDB.attachDatabaseAccount', async () => {
-            await attachedAccountsNode.attachNewAccount();
-            await tree.refresh(attachedAccountsNode);
-        });
-        registerCommand('cosmosDB.attachEmulator', async () => {
-            await attachedAccountsNode.attachEmulator();
-            await tree.refresh(attachedAccountsNode);
-        });
-        registerCommand('cosmosDB.refresh', async (node?: AzureTreeItem) => await tree.refresh(node));
-        registerCommand('cosmosDB.detachDatabaseAccount', async (node?: AzureTreeItem) => {
-            if (!node) {
-                node = await tree.showTreeItemPicker(accountContextValues.map((val: string) => val += AttachedAccountSuffix), attachedAccountsNode);
-            }
-
-            await attachedAccountsNode.detach(node);
-            await tree.refresh(attachedAccountsNode);
-        });
-        registerCommand('cosmosDB.importDocument', async (selectedNode: vscode.Uri | MongoCollectionTreeItem | DocDBCollectionTreeItem, uris: vscode.Uri[]) => //ignore first pass
-        {
-            if (selectedNode instanceof vscode.Uri) {
-                await importDocuments(uris || [selectedNode], undefined);
-            } else {
-                await importDocuments(undefined, selectedNode);
-            }
-        });
-
-        registerCommand('cosmosDB.openInPortal', async (node?: AzureTreeItem) => {
-            if (!node) {
-                node = await tree.showTreeItemPicker(accountContextValues);
-            }
-
-            node.openInPortal();
-        });
-        registerCommand('cosmosDB.copyConnectionString', async (node?: MongoAccountTreeItem | DocDBAccountTreeItemBase) => {
-            if (!node) {
-                node = <MongoAccountTreeItem | DocDBAccountTreeItemBase>await tree.showTreeItemPicker(accountContextValues);
-            }
-
-            await copyConnectionString(node);
-        });
-        registerCommand('cosmosDB.openDocument', async (node?: MongoDocumentTreeItem | DocDBDocumentTreeItem) => {
-            if (!node) {
-                node = <MongoDocumentTreeItem | DocDBDocumentTreeItem>await tree.showTreeItemPicker([MongoDocumentTreeItem.contextValue, DocDBDocumentTreeItem.contextValue]);
-            }
-
-            const editorTabName = node.label + "-cosmos-document.json";
-            if (node instanceof MongoDocumentTreeItem) {
-                await editorManager.showDocument(new MongoDocumentNodeEditor(node), editorTabName);
-            } else {
-                await editorManager.showDocument(new DocDBDocumentNodeEditor(node), editorTabName);
-            }
-            // tslint:disable-next-line:align
-        }, doubleClickDebounceDelay);
-        registerCommand('cosmosDB.update', (filePath: vscode.Uri) => editorManager.updateMatchingNode(filePath));
-        registerCommand('cosmosDB.loadMore', (node?: AzureTreeItem) => tree.loadMore(node));
-        registerEvent('cosmosDB.CosmosEditorManager.onDidSaveTextDocument', vscode.workspace.onDidSaveTextDocument, async function (
-            this: IActionContext, doc: vscode.TextDocument): Promise<void> {
-            await editorManager.onDidSaveTextDocument(this, doc);
-        });
-        registerEvent(
-            'cosmosDB.onDidChangeConfiguration',
-            vscode.workspace.onDidChangeConfiguration,
-            async function (this: IActionContext, event: vscode.ConfigurationChangeEvent): Promise<void> {
-                this.properties.isActivationEvent = "true";
-                this.suppressErrorDisplay = true;
-                if (event.affectsConfiguration(ext.settingsKeys.documentLabelFields)) {
-                    await vscode.commands.executeCommand("cosmosDB.refresh");
-                }
-            });
-    });
-
-    return createApiProvider([<AzureExtensionApi>{
-        findTreeItem,
-        pickTreeItem,
-        apiVersion: '1.0.0'
-    }]);
-}
-
-async function copyConnectionString(node: MongoAccountTreeItem | DocDBAccountTreeItemBase) {
-    if (process.platform !== 'linux' || (await cpUtil.commandSucceeds('xclip', '-version'))) {
-        copypaste.copy(node.connectionString);
-    } else {
-        vscode.window.showErrorMessage('You must have xclip installed to copy the connection string.');
-    }
-}
-
-// this method is called when your extension is deactivated
-export function deactivate() {
-    // NOOP
-}
-
-loadEndTime = Date.now();
+// Exports for use by the tests, which are not packaged with the webpack bundle and therefore
+//   only have access to code exported from this file. The tests should import '../extension.ts' (this file),
+//   to access these exports, and at runtime they will pick up dist/extension.js.

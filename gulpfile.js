@@ -9,7 +9,20 @@ const download = require('gulp-download');
 const path = require('path');
 const os = require('os');
 const cp = require('child_process');
+const fse = require('fs-extra');
 const glob = require('glob');
+
+const env = process.env;
+
+gulp.task('webpack-dev', (cb) => {
+    preWebpack();
+    spawn(path.join(__dirname, './node_modules/.bin/webpack'), ['--mode', 'development'], { stdio: 'inherit', env }, cb);
+});
+
+gulp.task('webpack-prod', (cb) => {
+    preWebpack();
+    spawn(path.join(__dirname, './node_modules/.bin/webpack'), ['--mode', 'production'], { stdio: 'inherit', env }, cb);
+});
 
 gulp.task('test', ['install-azure-account'], (cb) => {
     const env = process.env;
@@ -45,3 +58,28 @@ gulp.task('install-azure-account', () => {
     }
 });
 
+function spawn(command, args, options, cb) {
+    if (process.platform === 'win32') {
+        if (fse.pathExistsSync(command + '.exe')) {
+            command = command + '.exe';
+        } else if (fse.pathExistsSync(command + '.cmd')) {
+            command = command + '.cmd';
+        }
+
+    }
+
+    const cmd = cp.spawn(command, args, options);
+
+    cmd.on('close', (code) => {
+        cb(code);
+    });
+    cmd.on('error', (err) => {
+        console.error(`Error spawning '${command}': ${err}`)
+        cb(err);
+    });
+}
+
+function preWebpack() {
+    // without this, webpack can run out of memory in some environments
+    env.NODE_OPTIONS = '--max-old-space-size=8192';
+}
