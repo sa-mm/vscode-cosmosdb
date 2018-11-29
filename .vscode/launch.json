@@ -45,7 +45,7 @@
 		{
 			"type": "node",
 			"request": "attach",
-			"name": "Attach to Language Server",
+			"name": "Attach to Language Server asdf",
 			"protocol": "inspector",
 			"port": 6005,
 			"sourceMaps": true,
@@ -56,7 +56,7 @@
 		{
 			"type": "node",
 			"request": "attach",
-			"name": "Attach to Extension Host",
+			"name": "Attach to Extension Host asdf",
 			"protocol": "inspector",
 			"port": 5870,
 			"sourceMaps": true,
@@ -73,7 +73,7 @@
 			// 3) Launch this configuration
 			// 4) See Debug Console output
 			// 5) In mongo.g4 file, in the editor context menu, you should see options for generating graphs
-			"name": "Debug Mongo grammar",
+			"name": "Debug Mongo grammar asdf",
 			"type": "antlr-debug",
 			"request": "launch",
 			// This doesn't seem to work: "input": "${workspaceFolder}/${command:AskForTestInput}",

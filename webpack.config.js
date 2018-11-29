@@ -24,7 +24,8 @@ let DEBUG_WEBPACK = !!process.env.DEBUG_WEBPACK;
 const externalNodeModules = [
     // Modules that we can't webpack for some reason.
     // Keep this list small, because all the subdependencies will also be excluded
-    'require_optional'
+    'require_optional',
+    'vscode-languageclient'
 ];
 
 // External modules and all their dependencies and subdependencies (these will not be webpacked)
@@ -49,7 +50,10 @@ const config = {
         // dependencies will have a copy in each entry file, no sharing).
 
         // The entrypoint of this extension, see https://webpack.js.org/configuration/entry-context/
-        extension: './src/extension.ts'
+        extension: './src/extension.ts',
+
+        // Separate module for the mongo language server (doesn't share any code with extension.js)
+        './mongo-languageServer': './src/mongo/languageServer.ts'
     },
     output: {
         // The bundles are stored in the 'dist' folder (check package.json), see https://webpack.js.org/configuration/output/

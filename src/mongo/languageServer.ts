@@ -8,7 +8,7 @@ import { LanguageService } from './services/languageService';
 //
 //
 //
-// HOW TO DEBUG THE LANGUAGE SERVER
+// HOW TO DEBUG THE LANGUAGE SERVER asdf
 //
 //
 // 1. Start the extension via F5
